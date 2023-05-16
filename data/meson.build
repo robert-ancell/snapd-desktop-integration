@@ -18,3 +18,13 @@ gdbus_src = gnome.gdbus_codegen('io.snapcraft.SnapDesktopIntegration',
   interface_prefix : 'io.snapcraft.',
   docbook : 'SnapDesktopIntegration-interface-doc'
 )
+
+prompt_agent_src = gnome.gdbus_codegen('io.snapcraft.PromptAgent',
+  sources: 'io.snapcraft.PromptAgent.dbus.xml',
+  interface_prefix : 'io.snapcraft.',
+)
+
+app_armor_prompt_src = gnome.gdbus_codegen('io.snapcraft.AppArmorPrompt',
+  sources: 'io.snapcraft.AppArmorPrompt.dbus.xml',
+  interface_prefix : 'io.snapcraft.',
+)

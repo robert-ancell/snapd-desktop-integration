@@ -1,0 +1,14 @@
+<!DOCTYPE node PUBLIC
+"-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+
+<node name="/">
+  <interface name='io.snapcraft.PromptAgent'>
+    <method name='Prompt'>
+      <arg type='s' name='path' direction='in'/>
+      <arg type='a{ss}' name='info' direction='in'/>
+      <arg type='b' name='allow' direction='out'/>
+      <arg type='a{ss}' name='extra_constraints' direction='out'/>
+    </method>
+  </interface>
+</node>
