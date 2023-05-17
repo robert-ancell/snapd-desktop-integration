@@ -19,19 +19,8 @@
 
 #include "ds_state.h"
 
-typedef struct {
-  DsState *ds_state;
-  gchar *app_name;
-  GtkApplicationWindow *window;
-  GtkWidget *progress_bar;
-  GtkLabel *message;
-  GtkWidget *icon;
-  gchar *lock_file;
-  guint timeout_id;
-  guint close_id;
-  gboolean pulsed;
-  gboolean wait_change_in_lock_file;
-} RefreshState;
+G_DECLARE_FINAL_TYPE(SdiRefreshState, sdi_refresh_state, SDI, REFRESH_STATE,
+                     GObject)
 
 void handle_application_is_being_refreshed(const gchar *app_name,
                                            const gchar *lock_file_path,
@@ -44,8 +33,5 @@ void handle_set_pulsed_progress(const gchar *app_name, const gchar *bar_text,
 void handle_set_percentage_progress(const gchar *app_name,
                                     const gchar *bar_text, gdouble percentage,
                                     GVariant *extra_params, DsState *ds_state);
-RefreshState *refresh_state_new(DsState *ds_state, const gchar *app_name);
-
-void refresh_state_free(RefreshState *state);
-
-G_DEFINE_AUTOPTR_CLEANUP_FUNC(RefreshState, refresh_state_free);
+SdiRefreshState *sdi_refresh_state_new(DsState *ds_state,
+                                       const gchar *app_name);

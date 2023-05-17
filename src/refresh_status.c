@@ -25,16 +25,52 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-static gboolean on_close_window(GtkWindow *self, RefreshState *state) {
+struct _SdiRefreshState {
+  GObject parent_instance;
+
+  DsState *ds_state;
+  gchar *app_name;
+  GtkApplicationWindow *window;
+  GtkWidget *progress_bar;
+  GtkLabel *message;
+  GtkWidget *icon;
+  gchar *lock_file;
+  guint timeout_id;
+  guint close_id;
+  gboolean pulsed;
+  gboolean wait_change_in_lock_file;
+};
+
+G_DEFINE_TYPE(SdiRefreshState, sdi_refresh_state, G_TYPE_OBJECT)
+
+static void sdi_refresh_state_dispose(GObject *object) {
+  SdiRefreshState *self = SDI_REFRESH_STATE(object);
+
+  if (self->timeout_id != 0) {
+    g_source_remove(self->timeout_id);
+  }
+  if (self->close_id != 0) {
+    g_signal_handler_disconnect(G_OBJECT(self->window), self->close_id);
+  }
+  g_free(self->lock_file);
+  g_free(self->app_name);
+  if (self->window != NULL) {
+    gtk_window_destroy(GTK_WINDOW(self->window));
+  }
+
+  G_OBJECT_CLASS(sdi_refresh_state_parent_class)->dispose(object);
+}
+
+static gboolean on_close_window(GtkWindow *self, SdiRefreshState *state) {
   refresh_state_free(state);
   return TRUE;
 }
 
-static void on_hide_clicked(GtkButton *button, RefreshState *state) {
+static void on_hide_clicked(GtkButton *button, SdiRefreshState *state) {
   refresh_state_free(state);
 }
 
-static gboolean refresh_progress_bar(RefreshState *state) {
+static gboolean refresh_progress_bar(SdiRefreshState *state) {
   struct stat statbuf;
   if (state->pulsed) {
     gtk_progress_bar_pulse(GTK_PROGRESS_BAR(state->progress_bar));
@@ -64,9 +100,10 @@ static gboolean refresh_progress_bar(RefreshState *state) {
   return G_SOURCE_CONTINUE;
 }
 
-static RefreshState *find_application(GList *list, const char *app_name) {
-  for (; list != NULL; list = list->next) {
-    RefreshState *state = (RefreshState *)list->data;
+static SdiRefreshState *find_application(DsState *ds_state,
+                                         const char *app_name) {
+  for (guint i = 0; i < ds_state->refreshing_list->len; i++) {
+    SdiRefreshState *state = g_ptr_array_index(ds_state->refreshing_list, i);
     if (0 == g_strcmp0(state->app_name, app_name)) {
       return state;
     }
@@ -74,19 +111,19 @@ static RefreshState *find_application(GList *list, const char *app_name) {
   return NULL;
 }
 
-static void set_message(RefreshState *state, const gchar *message) {
+static void set_message(SdiRefreshState *state, const gchar *message) {
   if (message == NULL)
     return;
   gtk_label_set_text(state->message, message);
 }
 
-static void set_title(RefreshState *state, const gchar *title) {
+static void set_title(SdiRefreshState *state, const gchar *title) {
   if (title == NULL)
     return;
   gtk_window_set_title(GTK_WINDOW(state->window), title);
 }
 
-static void set_icon(RefreshState *state, const gchar *icon) {
+static void set_icon(SdiRefreshState *state, const gchar *icon) {
   if (icon == NULL)
     return;
   if (strlen(icon) == 0) {
@@ -97,7 +134,7 @@ static void set_icon(RefreshState *state, const gchar *icon) {
   gtk_widget_set_visible(state->icon, TRUE);
 }
 
-static void set_icon_image(RefreshState *state, const gchar *path) {
+static void set_icon_image(SdiRefreshState *state, const gchar *path) {
   g_autoptr(GFile) fimage = NULL;
   g_autoptr(GdkPixbuf) image = NULL;
   g_autoptr(GdkPixbuf) final_image = NULL;
@@ -130,7 +167,7 @@ static void set_icon_image(RefreshState *state, const gchar *path) {
   gtk_widget_set_visible(state->icon, TRUE);
 }
 
-static void set_desktop_file(RefreshState *state, const gchar *path) {
+static void set_desktop_file(SdiRefreshState *state, const gchar *path) {
   g_autoptr(GDesktopAppInfo) app_info = NULL;
   g_autofree gchar *icon = NULL;
 
@@ -150,7 +187,8 @@ static void set_desktop_file(RefreshState *state, const gchar *path) {
     set_icon_image(state, icon);
 }
 
-static void handle_extra_params(RefreshState *state, GVariant *extra_params) {
+static void handle_extra_params(SdiRefreshState *state,
+                                GVariant *extra_params) {
   GVariantIter iter;
   GVariant *value;
   gchar *key;
@@ -176,23 +214,29 @@ static void handle_extra_params(RefreshState *state, GVariant *extra_params) {
   }
 }
 
+void sdi_refresh_state_init(SdiRefreshState *self) {}
+
+void sdi_refresh_state_class_init(SdiRefreshStateClass *klass) {
+  G_OBJECT_CLASS(klass)->dispose = sdi_refresh_state_dispose;
+}
+
 void handle_application_is_being_refreshed(const gchar *app_name,
                                            const gchar *lock_file_path,
                                            GVariant *extra_params,
                                            DsState *ds_state) {
-  RefreshState *state = NULL;
+  SdiRefreshState *state = NULL;
   g_autofree gchar *label_text = NULL;
   g_autoptr(GtkBuilder) builder = NULL;
   GtkButton *button;
 
-  state = find_application(ds_state->refreshing_list, app_name);
+  state = find_application(ds_state, app_name);
   if (state != NULL) {
     gtk_window_present(GTK_WINDOW(state->window));
     handle_extra_params(state, extra_params);
     return;
   }
 
-  state = refresh_state_new(ds_state, app_name);
+  state = sdi_refresh_state_new(ds_state, app_name);
   if (*lock_file_path == 0) {
     state->lock_file = NULL;
   } else {
@@ -222,16 +266,16 @@ void handle_application_is_being_refreshed(const gchar *app_name,
   state->timeout_id =
       g_timeout_add(200, G_SOURCE_FUNC(refresh_progress_bar), state);
   gtk_window_present(GTK_WINDOW(state->window));
-  ds_state->refreshing_list = g_list_append(ds_state->refreshing_list, state);
+  g_ptr_array_add(ds_state->refreshing_list, state);
   handle_extra_params(state, extra_params);
 }
 
 void handle_close_application_window(const gchar *app_name,
                                      GVariant *extra_params,
                                      DsState *ds_state) {
-  RefreshState *state = NULL;
+  SdiRefreshState *state = NULL;
 
-  state = find_application(ds_state->refreshing_list, app_name);
+  state = find_application(ds_state, app_name);
   if (state == NULL) {
     return;
   }
@@ -240,9 +284,9 @@ void handle_close_application_window(const gchar *app_name,
 
 void handle_set_pulsed_progress(const gchar *app_name, const gchar *bar_text,
                                 GVariant *extra_params, DsState *ds_state) {
-  RefreshState *state = NULL;
+  SdiRefreshState *state = NULL;
 
-  state = find_application(ds_state->refreshing_list, app_name);
+  state = find_application(ds_state, app_name);
   if (state == NULL) {
     return;
   }
@@ -260,9 +304,9 @@ void handle_set_pulsed_progress(const gchar *app_name, const gchar *bar_text,
 void handle_set_percentage_progress(const gchar *app_name,
                                     const gchar *bar_text, gdouble percent,
                                     GVariant *extra_params, DsState *ds_state) {
-  RefreshState *state = NULL;
+  SdiRefreshState *state = NULL;
 
-  state = find_application(ds_state->refreshing_list, app_name);
+  state = find_application(ds_state, app_name);
   if (state == NULL) {
     return;
   }
@@ -277,30 +321,11 @@ void handle_set_percentage_progress(const gchar *app_name,
   handle_extra_params(state, extra_params);
 }
 
-RefreshState *refresh_state_new(DsState *ds_state, const gchar *app_name) {
-  RefreshState *object = g_new0(RefreshState, 1);
-  object->app_name = g_strdup(app_name);
-  object->ds_state = ds_state;
-  object->pulsed = TRUE;
-  return object;
-}
-
-void refresh_state_free(RefreshState *state) {
-
-  DsState *ds_state = state->ds_state;
-
-  ds_state->refreshing_list = g_list_remove(ds_state->refreshing_list, state);
-
-  if (state->timeout_id != 0) {
-    g_source_remove(state->timeout_id);
-  }
-  if (state->close_id != 0) {
-    g_signal_handler_disconnect(G_OBJECT(state->window), state->close_id);
-  }
-  g_free(state->lock_file);
-  g_clear_pointer(&state->app_name, g_free);
-  if (state->window != NULL) {
-    gtk_window_destroy(GTK_WINDOW(state->window));
-  }
-  g_free(state);
+SdiRefreshState *sdi_refresh_state_new(DsState *ds_state,
+                                       const gchar *app_name) {
+  SdiRefreshState *self = g_object_new(sdi_refresh_state_get_type(), NULL);
+  self->app_name = g_strdup(app_name);
+  self->ds_state = ds_state;
+  self->pulsed = TRUE;
+  return self;
 }

@@ -49,5 +49,5 @@ typedef struct {
   NotifyNotification *progress_notification;
 
   /* The list of current refresh popups */
-  GList *refreshing_list;
+  GPtrArray *refreshing_list;
 } DsState;

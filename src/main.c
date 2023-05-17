@@ -50,7 +50,7 @@ static void ds_state_free(DsState *state) {
   g_clear_pointer(&state->sound_theme_name, g_free);
   g_clear_object(&state->install_notification);
   g_clear_object(&state->progress_notification);
-  g_list_free_full(state->refreshing_list, (GDestroyNotify)refresh_state_free);
+  g_clear_pointer(&state->refreshing_list, g_ptr_array_unref);
   g_free(state);
 }
 
@@ -481,6 +481,7 @@ int main(int argc, char **argv) {
 
   g_autoptr(GtkApplication) app = NULL;
   g_autoptr(DsState) state = g_new0(DsState, 1);
+  state->refreshing_list = g_ptr_array_new_with_free_func(g_object_unref);
 
   app = gtk_application_new("io.snapcraft.SnapDesktopIntegration",
                             G_APPLICATION_ALLOW_REPLACEMENT |
