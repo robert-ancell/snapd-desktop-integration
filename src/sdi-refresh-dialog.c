@@ -25,7 +25,6 @@
 
 #include "iresources.h"
 #include "sdi-refresh-dialog.h"
-#include "sdi-refresh-monitor-private.h"
 
 #define ICON_SIZE 48
 
@@ -276,16 +275,11 @@ SdiRefreshDialog *sdi_refresh_dialog_new(SdiRefreshMonitor *monitor,
                                          const gchar *app_name) {
   SdiRefreshDialog *object = g_new0(SdiRefreshDialog, 1);
   object->app_name = g_strdup(app_name);
-  object->monitor = monitor;
   object->pulsed = TRUE;
   return object;
 }
 
 void sdi_refresh_dialog_free(SdiRefreshDialog *dialog) {
-
-  SdiRefreshMonitor *monitor = dialog->monitor;
-
-  sdi_refresh_monitor_remove_application(monitor, dialog);
 
   if (dialog->timeout_id != 0) {
     g_source_remove(dialog->timeout_id);

@@ -19,10 +19,7 @@
 
 #include <gtk/gtk.h>
 
-#include "sdi-refresh-monitor.h"
-
 typedef struct {
-  SdiRefreshMonitor *monitor;
   gchar *app_name;
   GtkApplicationWindow *window;
   GtkProgressBar *progress_bar;
@@ -49,7 +46,6 @@ void handle_set_percentage_progress(const gchar *app_name,
                                     const gchar *bar_text, gdouble percentage,
                                     GVariant *extra_params,
                                     SdiRefreshMonitor *monitor);
-SdiRefreshDialog *sdi_refresh_dialog_new(SdiRefreshMonitor *monitor,
-                                         const gchar *app_name);
+SdiRefreshDialog *sdi_refresh_dialog_new(const gchar *app_name);
 
 void sdi_refresh_dialog_free(SdiRefreshDialog *state);
